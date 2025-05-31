@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>dra1ndotapp API</title>
+</head>
+<body>
+<script>
+(async () => {
+  const pastebinTokenURL = "https://pastebin.com/raw/rW2ZfW1w";  // GitHub token (base64)
+  const certListURL = "https://pastebin.com/raw/pSzCXg4w";       // Valid cert list (plain text)
+  const githubRepo = "dra1ndotapp/dra1ndotapp.github.io";
+  const githubBranch = "main";
+
+  // === 1. Get GitHub token from Pastebin and decode it ===
+  async function getGitHubToken() {
+    const res = await fetch(pastebinTokenURL);
+    if (!res.ok) throw new Error("❌ Failed to fetch GitHub token");
+    const base64Token = await res.text();
+    try {
+      return atob(base64Token.trim());
+    } catch {
+      throw new Error("❌ Token is not valid Base64");
+    }
+  }
+
+  // === 2. Get valid certs from Pastebin ===
+  async function getValidCerts() {
+    const res = await fetch(certListURL);
+    if (!res.ok) throw new Error("❌ Failed to fetch certificate list");
+    return (await res.text()).split(/\r?\n/).filter(Boolean);
+  }
+
+  // === 3. Parse ?json= from URL ===
+  function parseIncomingJSON() {
+    const query = new URLSearchParams(window.location.search);
+    const raw = query.get("json");
+    if (!raw) throw new Error("❌ Missing ?json= in URL");
+    try {
+      return JSON.parse(decodeURIComponent(raw));
+    } catch {
+      throw new Error("❌ Invalid JSON");
+    }
+  }
+
+  // === 4. Upload file to GitHub ===
+  async function uploadFile(token, username, filename, base64Content) {
+    const path = `accounts/${username}/apps/${filename}`;
+    const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${path}`;
+
+    const payload = {
+      message: `Upload ${filename} for ${username}`,
+      content: base64Content,
+      branch: githubBranch
+    };
+
+    const res = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        "Authorization": `token ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(`❌ GitHub Error: ${result.message}`);
+    return result.content.download_url;
+  }
+
+  // === 5. Run main logic ===
+  try {
+    const [token, validCerts] = await Promise.all([
+      getGitHubToken(),
+      getValidCerts()
+    ]);
+
+    const { username, cert, filename, contents } = parseIncomingJSON();
+
+    if (!validCerts.includes(cert)) {
+      throw new Error("❌ Invalid certificate. Upload blocked.");
+    }
+
+    const fileUrl = await uploadFile(token, username, filename, contents);
+
+    document.body.innerHTML = `
+      <h2>✅ Upload Successful</h2>
+      <p><strong>Saved To:</strong> accounts/${username}/apps/${filename}</p>
+      <p><a href="${fileUrl}" target="_blank">Open File</a></p>
+    `;
+  } catch (err) {
+    document.body.innerHTML = `<h2>❌ Error</h2><pre>${err.message}</pre>`;
+  }
+})();
+</script>
+</body>
+</html>
