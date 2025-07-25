@@ -11,6 +11,7 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
+            margin: 0;
             background-color: #f0f0f0;
         }
         .login-container {
@@ -19,6 +20,7 @@
             border-radius: 8px;
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
             text-align: center;
+            width: 320px;
         }
         input[type="text"], input[type="password"] {
             width: 100%;
@@ -34,12 +36,24 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
         }
         button:hover {
             background-color: #0056b3;
         }
         #qr-code {
             margin-top: 20px;
+        }
+        #message {
+            margin-top: 10px;
+            color: #d00;
+            font-weight: bold;
+        }
+        #account-info {
+            margin-top: 15px;
+            text-align: left;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -51,64 +65,83 @@
     <input type="password" id="password" placeholder="Password" />
     <button onclick="login()">Login</button>
 
+    <div id="message"></div>
     <div id="qr-code"></div>
+    <div id="account-info"></div>
 </div>
 
-<!-- QRCode library loaded here -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode"></script>
+<!-- Correct QRCode library -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <script>
     async function login() {
-        const username = document.getElementById("username").value;
+        const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
+        const message = document.getElementById("message");
+        const qrCodeContainer = document.getElementById("qr-code");
+        const accountInfo = document.getElementById("account-info");
+
+        // Clear previous results
+        message.textContent = "";
+        qrCodeContainer.innerHTML = "";
+        accountInfo.innerHTML = "";
 
         if (!username || !password) {
-            alert("Please enter both username and password.");
+            message.textContent = "Please enter both username and password.";
             return;
         }
 
+        message.style.color = "#333";
+        message.textContent = "Loading...";
+
         try {
             const url = `https://dra1ndotapp.github.io/accounts/${username}/main.drain`;
-
             const response = await fetch(url);
 
             if (!response.ok) {
-                alert("User not found or file doesn't exist.");
-                console.error("Fetch failed with status:", response.status);
+                message.style.color = "#d00";
+                message.textContent = "User not found.";
                 return;
             }
 
-            const text = await response.text();  // Get the raw text from the response
-            console.log(text);  // Log the raw response text
+            const text = await response.text();
+            const data = JSON.parse(text);
 
-            try {
-                const data = JSON.parse(text);  // Attempt to parse the JSON
-
-                // Verify password
-                if (data.password === password) {
-                    const deviceId = data.deviceid;
-                    generateQRCode(deviceId);
-                } else {
-                    alert("Incorrect password.");
-                }
-            } catch (jsonError) {
-                console.error("Error parsing JSON:", jsonError);
-                alert("The file is not a valid JSON.");
+            // Check ban
+            if (data.ban === true) {
+                message.style.color = "#d00";
+                message.textContent = "This account has been banned.";
+                return;
             }
+
+            // Verify password
+            if (data.password === password) {
+                message.style.color = "green";
+                message.textContent = "Login successful!";
+
+                // Show QR code for device ID
+                new QRCode(qrCodeContainer, {
+                    text: data.deviceid,
+                    width: 128,
+                    height: 128
+                });
+
+                // Show additional account info
+                accountInfo.innerHTML = `
+                    <strong>Email:</strong> ${data.email}<br>
+                    <strong>Tester:</strong> ${data.tester}<br>
+                    <strong>Device ID:</strong> ${data.deviceid}
+                `;
+            } else {
+                message.style.color = "#d00";
+                message.textContent = "Incorrect password.";
+            }
+
         } catch (error) {
             console.error("Error:", error);
-            alert("An error occurred. Please try again.");
+            message.style.color = "#d00";
+            message.textContent = "An error occurred. Please try again.";
         }
-    }
-
-    function generateQRCode(text) {
-        const qrCodeContainer = document.getElementById("qr-code");
-        qrCodeContainer.innerHTML = ""; // Clear any existing QR code
-        new QRCode(qrCodeContainer, {
-            text: text,
-            width: 128,
-            height: 128
-        });
     }
 </script>
 
