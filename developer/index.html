@@ -50,11 +50,6 @@
             color: #d00;
             font-weight: bold;
         }
-        #account-info {
-            margin-top: 15px;
-            text-align: left;
-            font-size: 14px;
-        }
     </style>
 </head>
 <body>
@@ -67,7 +62,6 @@
 
     <div id="message"></div>
     <div id="qr-code"></div>
-    <div id="account-info"></div>
 </div>
 
 <!-- Correct QRCode library -->
@@ -79,12 +73,10 @@
         const password = document.getElementById("password").value;
         const message = document.getElementById("message");
         const qrCodeContainer = document.getElementById("qr-code");
-        const accountInfo = document.getElementById("account-info");
 
         // Clear previous results
         message.textContent = "";
         qrCodeContainer.innerHTML = "";
-        accountInfo.innerHTML = "";
 
         if (!username || !password) {
             message.textContent = "Please enter both username and password.";
@@ -119,19 +111,13 @@
                 message.style.color = "green";
                 message.textContent = "Login successful!";
 
-                // Show QR code for device ID
+                // Generate QR code without showing other details
                 new QRCode(qrCodeContainer, {
                     text: data.deviceid,
                     width: 128,
                     height: 128
                 });
 
-                // Show additional account info
-                accountInfo.innerHTML = `
-                    <strong>Email:</strong> ${data.email}<br>
-                    <strong>Tester:</strong> ${data.tester}<br>
-                    <strong>Device ID:</strong> ${data.deviceid}
-                `;
             } else {
                 message.style.color = "#d00";
                 message.textContent = "Incorrect password.";
