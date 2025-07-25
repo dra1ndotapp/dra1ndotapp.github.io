@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        .login-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #qr-code {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-container">
+    <h2>Please log in</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+
+    <div id="qr-code"></div>
+</div>
+
+<script>
+    async function login() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+
+        if (!username || !password) {
+            alert("Please enter both username and password.");
+            return;
+        }
+
+        try {
+            // Replace the placeholder with the actual username in the URL
+            const url = `https://dra1ndotapp.github.io/accounts/${username}/main.drain`;
+
+            const response = await fetch(url);
+
+            // Check if the file exists
+            if (!response.ok) {
+                alert("User not found or file doesn't exist.");
+                return;
+            }
+
+            // Parse the JSON response
+            const data = await response.json();
+
+            // Verify password
+            if (data.password === password) {
+                // Get the device ID and generate a QR code
+                const deviceId = data.deviceid;
+                generateQRCode(deviceId);
+            } else {
+                alert("Incorrect password.");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred. Please try again.");
+        }
+    }
+
+    function generateQRCode(text) {
+        const qrCodeContainer = document.getElementById("qr-code");
+        qrCodeContainer.innerHTML = ""; // Clear any existing QR code
+        new QRCode(qrCodeContainer, {
+            text: text,
+            width: 128,
+            height: 128
+        });
+    }
+</script>
+
+</body>
+</html>
