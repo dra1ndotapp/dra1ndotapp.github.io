@@ -111,9 +111,10 @@
                 message.style.color = "green";
                 message.textContent = "Login successful!";
 
-                // Generate QR code without showing other details
+                // Generate QR code with JSON value (only deviceid)
+                const qrData = JSON.stringify({ deviceid: data.deviceid });
                 new QRCode(qrCodeContainer, {
-                    text: data.deviceid,
+                    text: qrData,
                     width: 128,
                     height: 128
                 });
