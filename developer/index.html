@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enable developer mode</title>
+    <title>User Login</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -67,6 +67,11 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <script>
+    // Simple Base64 encoder (UTF-8 safe)
+    function base64Encode(str) {
+        return btoa(unescape(encodeURIComponent(str)));
+    }
+
     async function login() {
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value;
@@ -110,10 +115,16 @@
                 message.style.color = "green";
                 message.textContent = "Login successful!";
 
-                // Generate a QR code containing JSON (not plain text)
-                const qrData = JSON.stringify({ deviceid: data.deviceid });
+                // Create JSON object
+                const qrObject = { deviceid: data.deviceid };
+                const jsonString = JSON.stringify(qrObject);
+
+                // Base64 encode the JSON
+                const encoded = base64Encode(jsonString);
+
+                // Generate QR code with Base64 content
                 new QRCode(qrCodeContainer, {
-                    text: qrData,
+                    text: encoded,
                     width: 128,
                     height: 128
                 });
