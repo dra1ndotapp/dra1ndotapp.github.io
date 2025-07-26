@@ -64,7 +64,6 @@
     <div id="qr-code"></div>
 </div>
 
-<!-- Correct QRCode library -->
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <script>
@@ -111,7 +110,7 @@
                 message.style.color = "green";
                 message.textContent = "Login successful!";
 
-                // Generate QR code with JSON value (only deviceid)
+                // Generate a QR code containing JSON (not plain text)
                 const qrData = JSON.stringify({ deviceid: data.deviceid });
                 new QRCode(qrCodeContainer, {
                     text: qrData,
