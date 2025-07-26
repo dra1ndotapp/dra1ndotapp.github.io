@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create App JSON</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+    .container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      width: 340px;
+    }
+    input[type="text"], input[type="password"], input[type="url"] {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #message {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    #appForm {
+      display: none;
+      text-align: left;
+    }
+    pre {
+      background: #222;
+      color: #eee;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 15px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- LOGIN FORM -->
+  <div id="loginForm">
+    <h2>Please log in</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <div id="message"></div>
+  </div>
+
+  <!-- APP INFO FORM -->
+  <div id="appForm">
+    <h2>Create App JSON</h2>
+    <label>Version</label>
+    <input type="text" id="version" required>
+    <label>Install URL</label>
+    <input type="url" id="install" required>
+    <label>Creator Website (optional)</label>
+    <input type="url" id="website" placeholder="Leave blank if not applicable">
+    <button id="generateBtn">Generate & Upload JSON</button>
+    <pre id="output" style="display:none;"></pre>
+  </div>
+</div>
+
+<script>
+let creatorName = "";
+
+function base64Encode(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+// Login logic (copied from your QR example)
+async function login() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const message = document.getElementById("message");
+
+  message.textContent = "";
+  if (!username || !password) {
+    message.style.color = "#d00";
+    message.textContent = "Please enter both username and password.";
+    return;
+  }
+
+  message.style.color = "#333";
+  message.textContent = "Loading...";
+
+  try {
+    const url = `https://dra1ndotapp.github.io/accounts/${username}/main.drain`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      message.style.color = "#d00";
+      message.textContent = "User not found.";
+      return;
+    }
+
+    const text = await response.text();
+    const data = JSON.parse(text);
+
+    if (data.ban === true) {
+      message.style.color = "#d00";
+      message.textContent = "This account has been banned.";
+      return;
+    }
+
+    if (data.password === password) {
+      creatorName = username;
+      message.style.color = "green";
+      message.textContent = "Login successful!";
+
+      document.getElementById('loginForm').style.display = 'none';
+      document.getElementById('appForm').style.display = 'block';
+    } else {
+      message.style.color = "#d00";
+      message.textContent = "Incorrect password.";
+    }
+
+  } catch (error) {
+    console.error("Error:", error);
+    message.style.color = "#d00";
+    message.textContent = "An error occurred. Please try again.";
+  }
+}
+
+// Generate and upload JSON
+document.getElementById('generateBtn').addEventListener('click', async () => {
+  const version = document.getElementById('version').value.trim();
+  const install = document.getElementById('install').value.trim();
+  const website = document.getElementById('website').value.trim();
+  const output = document.getElementById('output');
+
+  if (!version || !install) {
+    alert('Please fill out required fields.');
+    return;
+  }
+
+  const data = {
+    creatorName: creatorName,
+    version: version,
+    installUrl: install,
+    creatorWebsite: website || "non-applicable"
+  };
+
+  const jsonStr = JSON.stringify(data, null, 4);
+  output.style.display = 'block';
+  output.textContent = "Uploading...";
+
+  try {
+    // Fetch the token from Pastebin
+    const pastebinUrl = "https://pastebin.com/raw/6q18YqDv"; // <-- replace with your raw Pastebin URL
+    const tokenResp = await fetch(pastebinUrl);
+    const tokenJson = await tokenResp.json();
+    const token = tokenJson.api;
+
+    // Prepare GitHub API request
+    const contentBase64 = base64Encode(jsonStr);
+    const githubUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/test/example.json";
+
+    const commitResp = await fetch(githubUrl, {
+      method: "PUT",
+      headers: {
+        "Authorization": `token ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "Add example.json",
+        content: contentBase64,
+        branch: "main"
+      })
+    });
+
+    if (!commitResp.ok) {
+      throw new Error(`GitHub API error: ${commitResp.status}`);
+    }
+
+    output.textContent = jsonStr + "\n\nUploaded successfully to /test/example.json";
+
+  } catch (err) {
+    console.error(err);
+    output.textContent = "Failed to upload: " + err;
+  }
+});
+</script>
+</body>
+</html>
