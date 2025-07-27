@@ -2,4 +2,6 @@
   "beta" : "false",
   "approved" : "true",
   "changelog" : "Welcome to Dra1n 3.0!",
-  "dl" : "example.com"
+  "dl" : "example.com",
+  "devimg" : "example.com"
+}
