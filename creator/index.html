@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Create Shortcut for Dra1n!</title>
+  <title>Create Shortcut App JSON</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -20,7 +20,9 @@
       border-radius: 8px;
       box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
       text-align: center;
-      width: 360px;
+      width: 420px;
+      max-height: 95vh;
+      overflow-y: auto;
     }
     input[type="text"], input[type="password"], input[type="url"] {
       width: 100%;
@@ -46,7 +48,7 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    #appForm {
+    #appForm, #editForm {
       display: none;
       text-align: left;
     }
@@ -58,6 +60,18 @@
       margin-top: 15px;
       white-space: pre-wrap;
       word-wrap: break-word;
+    }
+    .app-edit {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+    }
+    .btn-danger {
+      background-color: #dc3545;
+    }
+    .btn-danger:hover {
+      background-color: #a71d2a;
     }
   </style>
 </head>
@@ -72,22 +86,31 @@
   </div>
 
   <div id="appForm">
-    <h2>Create Shortcut</h2>
-    <label>Shortcut Name</label>
+    <button onclick="showEditForm()">Edit My Apps</button>
+    <h2>Create Shortcut App JSON</h2>
+    <label>App Name</label>
     <input type="text" id="appname" required>
     <label>Version</label>
     <input type="text" id="version" required>
     <label>Install URL (iCloud only)</label>
     <input type="url" id="install" required>
-    <label>Your Website (optional)</label>
+    <label>Creator Website (optional)</label>
     <input type="url" id="website" placeholder="Leave blank if not applicable">
-    <button id="generateBtn">Publish Shortcut</button>
+    <button id="generateBtn">Generate & Upload JSON</button>
     <pre id="output" style="display:none;"></pre>
+  </div>
+
+  <div id="editForm">
+    <button onclick="hideEditForm()">Back</button>
+    <h2>Edit My Uploaded Apps</h2>
+    <div id="editList"></div>
+    <pre id="editOutput" style="display:none;"></pre>
   </div>
 </div>
 
 <script>
 let creatorName = "";
+let globalToken = "";
 
 const BIN_ID = "6886a86ef7e7a370d1eee533"; // from jsonbin.io
 const MASTER_KEY = "$2a$10$KHc67nvzX0e2fvgEtDtPi.JTtJtrfnMEuYLjUGEOrTsbSmi0YcwO."; // from jsonbin.io
@@ -171,84 +194,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (!tokenResp.ok) throw new Error();
     const tokenData = await tokenResp.json();
     const token = tokenData.record.api;
+    globalToken = token;
 
-    // ===== Modify store.json text =====
-    const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
-    let storeContent = "{}";
-    let storeSha = null;
-
-    const storeMetaResp = await fetch(storeApiUrl, {
-      headers: { "Authorization": `token ${token}` }
-    });
-
-    if (storeMetaResp.ok) {
-      const metaJson = await storeMetaResp.json();
-      storeSha = metaJson.sha;
-      storeContent = atob(metaJson.content.replace(/\n/g, ""));
-    }
-
-    let newEntry = `  "${creatorName}": "${appName}"`;
-    let updatedStoreText = storeContent.trim();
-
-    if (updatedStoreText.endsWith("}")) {
-      // Remove closing brace
-      updatedStoreText = updatedStoreText.slice(0, -1).trimEnd();
-
-      // Add a comma if there is already at least one entry
-      if (!updatedStoreText.endsWith("{") && !updatedStoreText.endsWith(",")) {
-        updatedStoreText += ",";
-      }
-
-      updatedStoreText += "\n" + newEntry + "\n}";
-    } else {
-      updatedStoreText = "{\n" + newEntry + "\n}";
-    }
-
-    const storeBase64 = base64Encode(updatedStoreText);
-
-    await fetch(storeApiUrl, {
-      method: "PUT",
-      headers: {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": `token ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        message: `Update store.json for ${appName}`,
-        content: storeBase64,
-        branch: "main",
-        sha: storeSha
-      })
-    });
-
-    // ===== Upload app details =====
-    const appDetails = {
-      dev: creatorName,
-      website: website || "non-applicable",
-      url: install,
-      verified: "n",
-      version: version
-    };
-
-    const appDetailsStr = JSON.stringify(appDetails, null, 2);
-    const appBase64 = base64Encode(appDetailsStr);
-    const appFileName = encodeURIComponent(appName) + ".json";
-    const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
-
-    await fetch(appGithubUrl, {
-      method: "PUT",
-      headers: {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": `token ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        message: `Create app file for ${appName}`,
-        content: appBase64,
-        branch: "main"
-      })
-    });
-
+    await updateStoreAndFiles(appName, version, install, website, token);
     document.getElementById('appname').value = "";
     document.getElementById('version').value = "";
     document.getElementById('install').value = "";
@@ -259,6 +207,231 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     output.textContent = "Failed to upload.";
   }
 });
+
+async function updateStoreAndFiles(appName, version, install, website, token) {
+  const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
+  let storeContent = "{}";
+  let storeSha = null;
+
+  const storeMetaResp = await fetch(storeApiUrl, {
+    headers: { "Authorization": `token ${token}` }
+  });
+
+  if (storeMetaResp.ok) {
+    const metaJson = await storeMetaResp.json();
+    storeSha = metaJson.sha;
+    storeContent = atob(metaJson.content.replace(/\n/g, ""));
+  }
+
+  let newEntry = `  "${creatorName}": "${appName}"`;
+  let updatedStoreText = storeContent.trim();
+
+  if (updatedStoreText.endsWith("}")) {
+    updatedStoreText = updatedStoreText.slice(0, -1).trimEnd();
+    if (!updatedStoreText.endsWith("{") && !updatedStoreText.endsWith(",")) {
+      updatedStoreText += ",";
+    }
+    updatedStoreText += "\n" + newEntry + "\n}";
+  } else {
+    updatedStoreText = "{\n" + newEntry + "\n}";
+  }
+
+  const storeBase64 = base64Encode(updatedStoreText);
+
+  await fetch(storeApiUrl, {
+    method: "PUT",
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": `token ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Update store.json for ${appName}`,
+      content: storeBase64,
+      branch: "main",
+      sha: storeSha
+    })
+  });
+
+  // upload app details file
+  const appDetails = {
+    dev: creatorName,
+    website: website || "non-applicable",
+    url: install,
+    verified: "n",
+    version: version
+  };
+  const appDetailsStr = JSON.stringify(appDetails, null, 2);
+  const appBase64 = base64Encode(appDetailsStr);
+  const appFileName = encodeURIComponent(appName) + ".json";
+  const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+
+  await fetch(appGithubUrl, {
+    method: "PUT",
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": `token ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Create app file for ${appName}`,
+      content: appBase64,
+      branch: "main"
+    })
+  });
+}
+
+// Show edit form
+async function showEditForm() {
+  document.getElementById("appForm").style.display = "none";
+  document.getElementById("editForm").style.display = "block";
+
+  const editList = document.getElementById("editList");
+  editList.innerHTML = "Loading apps...";
+
+  const storeUrl = "https://raw.githubusercontent.com/dra1ndotapp/dra1ndotapp.github.io/main/stores/shortcuts/store.json";
+  const resp = await fetch(storeUrl);
+  const text = await resp.text();
+
+  const lines = text.split("\n").filter(l => l.includes(`"${creatorName}"`));
+  if (!lines.length) {
+    editList.textContent = "You have not uploaded any apps yet.";
+    return;
+  }
+
+  editList.innerHTML = "";
+  for (let line of lines) {
+    const match = line.match(/"([^"]+)"\s*:\s*"([^"]+)"/);
+    if (!match) continue;
+    const appName = match[2];
+
+    const div = document.createElement("div");
+    div.className = "app-edit";
+    div.innerHTML = `
+      <strong>${appName}</strong><br>
+      <label>Version:</label><input type="text" id="ver-${appName}" placeholder="New version"><br>
+      <label>Install URL:</label><input type="url" id="url-${appName}" placeholder="New iCloud link"><br>
+      <button onclick="updateApp('${appName}')">Update</button>
+      <button class="btn-danger" onclick="deleteApp('${appName}')">Delete</button>
+    `;
+    editList.appendChild(div);
+  }
+}
+
+function hideEditForm() {
+  document.getElementById("editForm").style.display = "none";
+  document.getElementById("appForm").style.display = "block";
+}
+
+async function updateApp(appName) {
+  const ver = document.getElementById(`ver-${appName}`).value.trim();
+  const url = document.getElementById(`url-${appName}`).value.trim();
+  const out = document.getElementById("editOutput");
+  out.style.display = "block";
+  out.textContent = "Updating...";
+
+  if (!ver || !url) {
+    alert("Fill out version and URL.");
+    return;
+  }
+  if (!(url.startsWith("https://www.icloud.com/") || url.startsWith("https://icloud.com/"))) {
+    alert("Install URL must be an iCloud link.");
+    return;
+  }
+
+  const appDetails = {
+    dev: creatorName,
+    website: "non-applicable",
+    url: url,
+    verified: "n",
+    version: ver
+  };
+  const appDetailsStr = JSON.stringify(appDetails, null, 2);
+  const appBase64 = base64Encode(appDetailsStr);
+
+  const appFileName = encodeURIComponent(appName) + ".json";
+  const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+
+  await fetch(appGithubUrl, {
+    method: "PUT",
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": `token ${globalToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Update app file for ${appName}`,
+      content: appBase64,
+      branch: "main"
+    })
+  });
+
+  out.textContent = "Updated!";
+}
+
+async function deleteApp(appName) {
+  const confirmDelete = confirm(`Are you sure you want to delete "${appName}"?`);
+  if (!confirmDelete) return;
+
+  const out = document.getElementById("editOutput");
+  out.style.display = "block";
+  out.textContent = "Deleting...";
+
+  // 1. Remove line from store.json
+  const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
+  const storeMetaResp = await fetch(storeApiUrl, {
+    headers: { "Authorization": `token ${globalToken}` }
+  });
+  const metaJson = await storeMetaResp.json();
+  let storeContent = atob(metaJson.content.replace(/\n/g, ""));
+  let storeSha = metaJson.sha;
+
+  const pattern = new RegExp(`\\s*"${creatorName}"\\s*:\\s*"${appName}".*`, 'g');
+  storeContent = storeContent.replace(pattern, "");
+  storeContent = storeContent.replace(/,\s*}/g, "\n}"); // clean trailing commas
+
+  const storeBase64 = base64Encode(storeContent);
+  await fetch(storeApiUrl, {
+    method: "PUT",
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": `token ${globalToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Remove ${appName} from store.json`,
+      content: storeBase64,
+      branch: "main",
+      sha: storeSha
+    })
+  });
+
+  // 2. Delete app file
+  const appFileName = encodeURIComponent(appName) + ".json";
+  const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+
+  const appMetaResp = await fetch(appGithubUrl, {
+    headers: { "Authorization": `token ${globalToken}` }
+  });
+  const appMetaJson = await appMetaResp.json();
+  const appSha = appMetaJson.sha;
+
+  await fetch(appGithubUrl, {
+    method: "DELETE",
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": `token ${globalToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: `Delete ${appName}.json`,
+      sha: appSha,
+      branch: "main"
+    })
+  });
+
+  out.textContent = `"${appName}" deleted. Reload edit page to see changes.`;
+}
 </script>
 </body>
 </html>
