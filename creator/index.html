@@ -154,11 +154,25 @@ async function login() {
     }
 
     if (data.password === password) {
-      creatorName = username;
-      message.style.color = "green";
-      message.textContent = "Login successful!";
-      document.getElementById('loginForm').style.display = 'none';
-      document.getElementById('appForm').style.display = 'block';
+creatorName = username;
+message.style.color = "green";
+message.textContent = "Login successful! Fetching permissions...";
+
+// Fetch token from JSONBin (same as creation)
+try {
+    const tokenResp = await fetch(BIN_URL, { headers: { "X-Master-Key": MASTER_KEY }});
+    if (!tokenResp.ok) throw new Error();
+    const tokenData = await tokenResp.json();
+    globalToken = tokenData.record.api; // Save token globally
+} catch (err) {
+    message.style.color = "#d00";
+    message.textContent = "Login failed: Cannot fetch GitHub token.";
+    return;
+}
+
+document.getElementById('loginForm').style.display = 'none';
+document.getElementById('appForm').style.display = 'block';
+
     } else {
       message.style.color = "#d00";
       message.textContent = "Incorrect password.";
@@ -208,37 +222,18 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   }
 });
 
-async function updateStoreAndFiles(appName, version, install, website, token) {
-  const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
-  let storeContent = "{}";
-  let storeSha = null;
+async function fetchStore(token) {
+  const url = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
+  const resp = await fetch(url, { headers: { "Authorization": `token ${token}` } });
+  if (!resp.ok) throw new Error(`Failed to fetch store.json`);
+  const json = await resp.json();
+  return { sha: json.sha, content: JSON.parse(atob(json.content.replace(/\n/g, ""))) };
+}
 
-  const storeMetaResp = await fetch(storeApiUrl, {
-    headers: { "Authorization": `token ${token}` }
-  });
-
-  if (storeMetaResp.ok) {
-    const metaJson = await storeMetaResp.json();
-    storeSha = metaJson.sha;
-    storeContent = atob(metaJson.content.replace(/\n/g, ""));
-  }
-
-  let newEntry = `  "${creatorName}": "${appName}"`;
-  let updatedStoreText = storeContent.trim();
-
-  if (updatedStoreText.endsWith("}")) {
-    updatedStoreText = updatedStoreText.slice(0, -1).trimEnd();
-    if (!updatedStoreText.endsWith("{") && !updatedStoreText.endsWith(",")) {
-      updatedStoreText += ",";
-    }
-    updatedStoreText += "\n" + newEntry + "\n}";
-  } else {
-    updatedStoreText = "{\n" + newEntry + "\n}";
-  }
-
-  const storeBase64 = base64Encode(updatedStoreText);
-
-  await fetch(storeApiUrl, {
+async function saveStore(storeObj, sha, token, message) {
+  const url = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
+  const base64 = base64Encode(JSON.stringify(storeObj, null, 2));
+  const resp = await fetch(url, {
     method: "PUT",
     headers: {
       "Accept": "application/vnd.github.v3+json",
@@ -246,12 +241,21 @@ async function updateStoreAndFiles(appName, version, install, website, token) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      message: `Update store.json for ${appName}`,
-      content: storeBase64,
+      message,
+      content: base64,
       branch: "main",
-      sha: storeSha
+      sha
     })
   });
+  if (!resp.ok) throw new Error(`Failed to save store.json`);
+}
+
+async function updateStoreAndFiles(appName, version, install, website, token) {
+  let { sha, content: storeObj } = await fetchStore(token);
+
+  // Add new entry
+  storeObj[creatorName] = appName;
+  await saveStore(storeObj, sha, token, `Add ${appName}`);
 
   // upload app details file
   const appDetails = {
@@ -291,20 +295,16 @@ async function showEditForm() {
 
   const storeUrl = "https://raw.githubusercontent.com/dra1ndotapp/dra1ndotapp.github.io/main/stores/shortcuts/store.json";
   const resp = await fetch(storeUrl);
-  const text = await resp.text();
+  const storeObj = await resp.json();
 
-  const lines = text.split("\n").filter(l => l.includes(`"${creatorName}"`));
-  if (!lines.length) {
+  const userApps = Object.entries(storeObj).filter(([k,v]) => k === creatorName);
+  if (!userApps.length) {
     editList.textContent = "You have not uploaded any apps yet.";
     return;
   }
 
   editList.innerHTML = "";
-  for (let line of lines) {
-    const match = line.match(/"([^"]+)"\s*:\s*"([^"]+)"/);
-    if (!match) continue;
-    const appName = match[2];
-
+  for (let [user, appName] of userApps) {
     const div = document.createElement("div");
     div.className = "app-edit";
     div.innerHTML = `
@@ -339,34 +339,54 @@ async function updateApp(appName) {
     return;
   }
 
-  const appDetails = {
-    dev: creatorName,
-    website: "non-applicable",
-    url: url,
-    verified: "n",
-    version: ver
-  };
-  const appDetailsStr = JSON.stringify(appDetails, null, 2);
-  const appBase64 = base64Encode(appDetailsStr);
+  try {
+    const { content: storeObj } = await fetchStore(globalToken);
+    if (!Object.values(storeObj).includes(appName)) {
+      out.textContent = `Cannot update: Entry for ${appName} not found in store.json.`;
+      return;
+    }
 
-  const appFileName = encodeURIComponent(appName) + ".json";
-  const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+    const appDetails = {
+      dev: creatorName,
+      website: "non-applicable",
+      url: url,
+      verified: "n",
+      version: ver
+    };
+    const appDetailsStr = JSON.stringify(appDetails, null, 2);
+    const appBase64 = base64Encode(appDetailsStr);
 
-  await fetch(appGithubUrl, {
-    method: "PUT",
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-      "Authorization": `token ${globalToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: `Update app file for ${appName}`,
-      content: appBase64,
-      branch: "main"
-    })
-  });
+    const appFileName = encodeURIComponent(appName) + ".json";
+    const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
 
-  out.textContent = "Updated!";
+    const appMetaResp = await fetch(appGithubUrl, {
+      headers: { "Authorization": `token ${globalToken}` }
+    });
+    const appMetaJson = await appMetaResp.json();
+
+    const resp = await fetch(appGithubUrl, {
+      method: "PUT",
+      headers: {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": `token ${globalToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: `Update app file for ${appName}`,
+        content: appBase64,
+        branch: "main",
+        sha: appMetaJson.sha
+      })
+    });
+
+    if (!resp.ok) throw new Error(`Failed to update ${appFileName}`);
+    out.textContent = `"${appName}" updated successfully! Refreshing...`;
+    await new Promise(r=>setTimeout(r,1000));
+    showEditForm();
+  } catch (e) {
+    console.error(e);
+    out.textContent = `Error updating app: ${e.message}`;
+  }
 }
 
 async function deleteApp(appName) {
@@ -377,60 +397,48 @@ async function deleteApp(appName) {
   out.style.display = "block";
   out.textContent = "Deleting...";
 
-  // 1. Remove line from store.json
-  const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
-  const storeMetaResp = await fetch(storeApiUrl, {
-    headers: { "Authorization": `token ${globalToken}` }
-  });
-  const metaJson = await storeMetaResp.json();
-  let storeContent = atob(metaJson.content.replace(/\n/g, ""));
-  let storeSha = metaJson.sha;
+  try {
+    const { sha, content: storeObj } = await fetchStore(globalToken);
 
-  const pattern = new RegExp(`\\s*"${creatorName}"\\s*:\\s*"${appName}".*`, 'g');
-  storeContent = storeContent.replace(pattern, "");
-  storeContent = storeContent.replace(/,\s*}/g, "\n}"); // clean trailing commas
+    // Remove this entry (all matching entries)
+    for (let key of Object.keys(storeObj)) {
+      if (key === creatorName && storeObj[key] === appName) {
+        delete storeObj[key];
+      }
+    }
 
-  const storeBase64 = base64Encode(storeContent);
-  await fetch(storeApiUrl, {
-    method: "PUT",
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-      "Authorization": `token ${globalToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: `Remove ${appName} from store.json`,
-      content: storeBase64,
-      branch: "main",
-      sha: storeSha
-    })
-  });
+    await saveStore(storeObj, sha, globalToken, `Remove ${appName}`);
 
-  // 2. Delete app file
-  const appFileName = encodeURIComponent(appName) + ".json";
-  const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+    const appFileName = encodeURIComponent(appName) + ".json";
+    const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
 
-  const appMetaResp = await fetch(appGithubUrl, {
-    headers: { "Authorization": `token ${globalToken}` }
-  });
-  const appMetaJson = await appMetaResp.json();
-  const appSha = appMetaJson.sha;
+    const appMetaResp = await fetch(appGithubUrl, {
+      headers: { "Authorization": `token ${globalToken}` }
+    });
+    if (appMetaResp.ok) {
+      const appMetaJson = await appMetaResp.json();
+      await fetch(appGithubUrl, {
+        method: "DELETE",
+        headers: {
+          "Accept": "application/vnd.github.v3+json",
+          "Authorization": `token ${globalToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: `Delete ${appName}.json`,
+          sha: appMetaJson.sha,
+          branch: "main"
+        })
+      });
+    }
 
-  await fetch(appGithubUrl, {
-    method: "DELETE",
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-      "Authorization": `token ${globalToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: `Delete ${appName}.json`,
-      sha: appSha,
-      branch: "main"
-    })
-  });
-
-  out.textContent = `"${appName}" deleted. Reload edit page to see changes.`;
+    out.textContent = `"${appName}" deleted. Refreshing list...`;
+    await new Promise(r=>setTimeout(r,1000));
+    showEditForm();
+  } catch (e) {
+    console.error(e);
+    out.textContent = `Error deleting app: ${e.message}`;
+  }
 }
 </script>
 </body>
