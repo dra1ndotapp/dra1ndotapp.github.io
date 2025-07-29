@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Create App JSON</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Create Shortcut for Dra1n!</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -20,7 +20,7 @@
       border-radius: 8px;
       box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
       text-align: center;
-      width: 340px;
+      width: 360px;
     }
     input[type="text"], input[type="password"], input[type="url"] {
       width: 100%;
@@ -63,7 +63,6 @@
 </head>
 <body>
 <div class="container">
-  <!-- LOGIN FORM -->
   <div id="loginForm">
     <h2>Please log in</h2>
     <input type="text" id="username" placeholder="Username" />
@@ -72,16 +71,17 @@
     <div id="message"></div>
   </div>
 
-  <!-- APP INFO FORM -->
   <div id="appForm">
-    <h2>Create App JSON</h2>
+    <h2>Create Shortcut</h2>
+    <label>Shortcut Name</label>
+    <input type="text" id="appname" required>
     <label>Version</label>
     <input type="text" id="version" required>
-    <label>Install URL</label>
+    <label>Install URL (iCloud only)</label>
     <input type="url" id="install" required>
-    <label>Creator Website (optional)</label>
+    <label>Your Website (optional)</label>
     <input type="url" id="website" placeholder="Leave blank if not applicable">
-    <button id="generateBtn">Generate & Upload JSON</button>
+    <button id="generateBtn">Publish Shortcut</button>
     <pre id="output" style="display:none;"></pre>
   </div>
 </div>
@@ -89,11 +89,14 @@
 <script>
 let creatorName = "";
 
+const BIN_ID = "6886a86ef7e7a370d1eee533"; // from jsonbin.io
+const MASTER_KEY = "$2a$10$KHc67nvzX0e2fvgEtDtPi.JTtJtrfnMEuYLjUGEOrTsbSmi0YcwO."; // from jsonbin.io
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}/latest`;
+
 function base64Encode(str) {
   return btoa(unescape(encodeURIComponent(str)));
 }
 
-// Login logic (copied from your QR example)
 async function login() {
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value;
@@ -119,8 +122,7 @@ async function login() {
       return;
     }
 
-    const text = await response.text();
-    const data = JSON.parse(text);
+    const data = JSON.parse(await response.text());
 
     if (data.ban === true) {
       message.style.color = "#d00";
@@ -132,77 +134,129 @@ async function login() {
       creatorName = username;
       message.style.color = "green";
       message.textContent = "Login successful!";
-
       document.getElementById('loginForm').style.display = 'none';
       document.getElementById('appForm').style.display = 'block';
     } else {
       message.style.color = "#d00";
       message.textContent = "Incorrect password.";
     }
-
-  } catch (error) {
-    console.error("Error:", error);
+  } catch {
     message.style.color = "#d00";
     message.textContent = "An error occurred. Please try again.";
   }
 }
 
-// Generate and upload JSON
 document.getElementById('generateBtn').addEventListener('click', async () => {
+  const appName = document.getElementById('appname').value.trim();
   const version = document.getElementById('version').value.trim();
   const install = document.getElementById('install').value.trim();
   const website = document.getElementById('website').value.trim();
   const output = document.getElementById('output');
 
-  if (!version || !install) {
+  if (!appName || !version || !install) {
     alert('Please fill out required fields.');
     return;
   }
 
-  const data = {
-    creatorName: creatorName,
-    version: version,
-    installUrl: install,
-    creatorWebsite: website || "non-applicable"
-  };
+  if (!(install.startsWith("https://www.icloud.com/") || install.startsWith("https://icloud.com/"))) {
+    alert("Install URL must be an iCloud link.");
+    return;
+  }
 
-  const jsonStr = JSON.stringify(data, null, 4);
   output.style.display = 'block';
   output.textContent = "Uploading...";
 
   try {
-    // Fetch the token from Pastebin
-    const pastebinUrl = "https://pastebin.com/raw/6q18YqDv"; // <-- replace with your raw Pastebin URL
-    const tokenResp = await fetch(pastebinUrl);
-    const tokenJson = await tokenResp.json();
-    const token = tokenJson.api;
+    const tokenResp = await fetch(BIN_URL, { headers: { "X-Master-Key": MASTER_KEY }});
+    if (!tokenResp.ok) throw new Error();
+    const tokenData = await tokenResp.json();
+    const token = tokenData.record.api;
 
-    // Prepare GitHub API request
-    const contentBase64 = base64Encode(jsonStr);
-    const githubUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/test/example.json";
+    // ===== Modify store.json text =====
+    const storeApiUrl = "https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/store.json";
+    let storeContent = "{}";
+    let storeSha = null;
 
-    const commitResp = await fetch(githubUrl, {
+    const storeMetaResp = await fetch(storeApiUrl, {
+      headers: { "Authorization": `token ${token}` }
+    });
+
+    if (storeMetaResp.ok) {
+      const metaJson = await storeMetaResp.json();
+      storeSha = metaJson.sha;
+      storeContent = atob(metaJson.content.replace(/\n/g, ""));
+    }
+
+    let newEntry = `  "${creatorName}": "${appName}"`;
+    let updatedStoreText = storeContent.trim();
+
+    if (updatedStoreText.endsWith("}")) {
+      // Remove closing brace
+      updatedStoreText = updatedStoreText.slice(0, -1).trimEnd();
+
+      // Add a comma if there is already at least one entry
+      if (!updatedStoreText.endsWith("{") && !updatedStoreText.endsWith(",")) {
+        updatedStoreText += ",";
+      }
+
+      updatedStoreText += "\n" + newEntry + "\n}";
+    } else {
+      updatedStoreText = "{\n" + newEntry + "\n}";
+    }
+
+    const storeBase64 = base64Encode(updatedStoreText);
+
+    await fetch(storeApiUrl, {
       method: "PUT",
       headers: {
+        "Accept": "application/vnd.github.v3+json",
         "Authorization": `token ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        message: "Add example.json",
-        content: contentBase64,
+        message: `Update store.json for ${appName}`,
+        content: storeBase64,
+        branch: "main",
+        sha: storeSha
+      })
+    });
+
+    // ===== Upload app details =====
+    const appDetails = {
+      dev: creatorName,
+      website: website || "non-applicable",
+      url: install,
+      verified: "n",
+      version: version
+    };
+
+    const appDetailsStr = JSON.stringify(appDetails, null, 2);
+    const appBase64 = base64Encode(appDetailsStr);
+    const appFileName = encodeURIComponent(appName) + ".json";
+    const appGithubUrl = `https://api.github.com/repos/dra1ndotapp/dra1ndotapp.github.io/contents/stores/shortcuts/${appFileName}`;
+
+    await fetch(appGithubUrl, {
+      method: "PUT",
+      headers: {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": `token ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: `Create app file for ${appName}`,
+        content: appBase64,
         branch: "main"
       })
     });
 
-    if (!commitResp.ok) {
-      throw new Error(`GitHub API error: ${commitResp.status}`);
-    }
+    document.getElementById('appname').value = "";
+    document.getElementById('version').value = "";
+    document.getElementById('install').value = "";
+    document.getElementById('website').value = "";
+    output.style.display = "none";
 
-    output.textContent = jsonStr + "\n\nUploaded successfully to /test/example.json";
-
-  } catch (err) {
-    console.error(err);
-    output.textContent = "Failed to upload: " + err;
+  } catch (e) {
+    output.textContent = "Failed to upload.";
   }
 });
 </script>
