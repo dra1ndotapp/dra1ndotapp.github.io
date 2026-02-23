@@ -1,0 +1,10 @@
+{
+  "marketplaces": [
+    {
+      "name": "CoolStore",
+      "folder": "coolstore",
+      "owner": "username22",
+      "description": "Best shortcuts"
+    }
+  ]
+}
