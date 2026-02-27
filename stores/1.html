@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1">
+
+<title>Shortcut Store</title>
+
+<style>
+
+html,body{
+
+margin:0;
+height:100%;
+
+background:#111;
+
+font-family:-apple-system,
+BlinkMacSystemFont,
+Segoe UI,
+Roboto;
+
+color:white;
+
+overflow:hidden;
+
+}
+
+/* fullscreen */
+
+.phone{
+
+width:100vw;
+height:100vh;
+
+position:relative;
+
+overflow:hidden;
+
+}
+
+/* screens */
+
+.screen{
+
+position:absolute;
+
+width:100%;
+height:100%;
+
+padding:20px;
+
+box-sizing:border-box;
+
+overflow:auto;
+
+transition:.35s;
+
+}
+
+#detail{
+
+left:100%;
+
+}
+
+.phone.showDetail #launch{
+
+left:-100%;
+
+}
+
+.phone.showDetail #detail{
+
+left:0;
+
+}
+
+h1{
+
+text-align:center;
+
+color:#4b63ff;
+
+font-weight:500;
+
+}
+
+/* buttons */
+
+.shortcut{
+
+width:100%;
+
+padding:16px;
+
+background:#4956c8;
+
+border:none;
+
+border-radius:12px;
+
+margin-bottom:10px;
+
+color:white;
+
+font-size:17px;
+
+cursor:pointer;
+
+}
+
+.shortcut:hover{
+
+opacity:.85;
+
+}
+
+.get{
+
+width:100%;
+
+padding:18px;
+
+background:#4956c8;
+
+border:none;
+
+border-radius:14px;
+
+font-size:18px;
+
+color:white;
+
+margin-top:40px;
+
+cursor:pointer;
+
+}
+
+.back{
+
+background:none;
+
+border:none;
+
+color:#4b63ff;
+
+font-size:17px;
+
+cursor:pointer;
+
+}
+
+.error{
+
+background:#8b1e1e;
+
+padding:12px;
+
+border-radius:10px;
+
+margin-bottom:10px;
+
+text-align:center;
+
+}
+
+</style>
+
+</head>
+
+
+
+<body>
+
+
+<div class="phone" id="phone">
+
+
+<!-- LAUNCH -->
+
+<div id="launch" class="screen">
+
+<h1>Shortcuts</h1>
+
+<h3>Hot right now</h3>
+
+<div id="hot">
+
+Loading...
+
+</div>
+
+<h3>Shortcuts we use</h3>
+
+<div id="use">
+
+Loading...
+
+</div>
+
+</div>
+
+
+
+<!-- DETAIL -->
+
+<div id="detail" class="screen">
+
+<button class="back"
+onclick="goBack()">
+
+← Back
+
+</button>
+
+<h1 id="name">
+
+Shortcut
+
+</h1>
+
+<p id="desc">
+
+Description
+
+</p>
+
+<p id="meta">
+
+meta
+
+</p>
+
+<button id="get"
+class="get">
+
+Get Shortcut
+
+</button>
+
+</div>
+
+</div>
+
+
+
+<script>
+
+const HOT=
+"https://dra1ndotapp.github.io/stores/hot.json";
+
+const USE=
+"https://dra1ndotapp.github.io/stores/use.json";
+
+let shortcutURL=null;
+
+
+/* show visible error */
+
+function showError(container,message){
+
+container.innerHTML=
+'<div class="error">'+
+message+
+'</div>';
+
+alert(message);
+
+}
+
+
+
+/* create button */
+
+function createShortcut(name,url,container){
+
+const btn=document.createElement("button");
+
+btn.className="shortcut";
+
+btn.textContent=name;
+
+btn.onclick=()=>openShortcut(url);
+
+container.appendChild(btn);
+
+}
+
+
+
+/* load lists */
+
+async function loadList(jsonURL,id){
+
+const container=
+document.getElementById(id);
+
+try{
+
+const res=
+await fetch(jsonURL,
+{cache:"no-store"});
+
+if(!res.ok){
+
+throw new Error(
+"Failed to load list."
+);
+
+}
+
+const data=
+await res.json();
+
+container.innerHTML="";
+
+for(const name in data){
+
+createShortcut(
+name,
+data[name],
+container
+);
+
+}
+
+}catch(e){
+
+showError(
+container,
+"Failed loading shortcuts."
+);
+
+console.error(e);
+
+}
+
+}
+
+
+
+/* open shortcut */
+
+async function openShortcut(jsonURL){
+
+try{
+
+const res=
+await fetch(jsonURL,
+{cache:"no-store"});
+
+if(!res.ok){
+
+throw new Error(
+"Shortcut file missing."
+);
+
+}
+
+const data=
+await res.json();
+
+
+document.getElementById("name")
+.textContent=data.name;
+
+document.getElementById("desc")
+.textContent=data.desc;
+
+document.getElementById("meta")
+.textContent=
+"v"+data.version+
+" by "+data.dev;
+
+shortcutURL=data.url;
+
+
+document
+.getElementById("phone")
+.classList
+.add("showDetail");
+
+}catch(e){
+
+alert(
+"Shortcut failed to load."
+);
+
+console.error(e);
+
+}
+
+}
+
+
+
+/* back */
+
+function goBack(){
+
+document
+.getElementById("phone")
+.classList
+.remove("showDetail");
+
+}
+
+
+
+/* get */
+
+document.getElementById("get")
+.onclick=function(){
+
+if(shortcutURL){
+
+window.location.href=
+shortcutURL;
+
+}else{
+
+alert(
+"No shortcut download found."
+);
+
+}
+
+};
+
+
+
+/* load */
+
+loadList(HOT,"hot");
+
+loadList(USE,"use");
+
+</script>
+
+</body>
+
+</html>
